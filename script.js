@@ -126,12 +126,21 @@ async function sendTelegram(msg) {
 }
 
 // -----------------------------
-// MAIN LOGIC
+// MAIN LOGIC (NOW FULLY SAFE)
 // -----------------------------
 async function main() {
-  const prices = await fetchPrices();
-  const ratios = calculateRatios(prices.btc, prices.xrp, prices.gold);
+  let prices;
 
+  // Try all APIs safely
+  try {
+    prices = await fetchPrices();
+  } catch (e) {
+    // Graceful fallback — no workflow failure
+    await sendTelegram("⚠️ All APIs failed to fetch prices");
+    return;
+  }
+
+  const ratios = calculateRatios(prices.btc, prices.xrp, prices.gold);
   const prev = loadState();
 
   // Detect changes
