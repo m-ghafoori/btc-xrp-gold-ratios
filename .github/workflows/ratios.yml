@@ -1,9 +1,10 @@
 name: Ratios
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: "*/15 * * * *"
-
+    
 jobs:
   run:
     runs-on: ubuntu-latest
