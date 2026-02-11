@@ -196,19 +196,19 @@ async function main() {
   if (sendWarning) {
     const hoursSinceLast = (now - prev.lastRun) / (1000 * 60 * 60);
     await sendTelegram(
-      `⚠️ Warning: Workflow did not run for ${hoursSinceLast.toFixed(2)} hours`
+      ` <!--EZBOT--> ⚠️ Warning: Workflow did not run for ${hoursSinceLast.toFixed(2)} hours`
     );
   }
 
   if (sendHeartbeat) {
     await sendTelegram(
-      `💓 Heartbeat\n${prices.source} | B/G: ${ratios.bg} | B/R: ${ratios.br} | G/R: ${ratios.gr}`
+      ` <!--EZBOT--> 💓 Heartbeat\n${prices.source} | B/G: ${ratios.bg} | B/R: ${ratios.br} | G/R: ${ratios.gr}`
     );
   }
 
   if (ratiosChanged) {
     await sendTelegram(
-      `${prices.source} | B/G: ${ratios.bg} | B/R: ${ratios.br} | G/R: ${ratios.gr}`
+      ` <!--EZBOT--> ${prices.source} | B/G: ${ratios.bg} | B/R: ${ratios.br} | G/R: ${ratios.gr}`
     );
   }
 
