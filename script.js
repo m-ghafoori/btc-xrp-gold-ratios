@@ -120,11 +120,21 @@ async function sendTelegram(msg) {
   const bot = process.env.TELEGRAM_BOT;
   const chat = process.env.TELEGRAM_CHAT;
 
+  if (!bot || !chat) {
+    console.error("Telegram bot token or chat ID missing");
+    return;
+  }
+
   const url = `https://api.telegram.org/bot${bot}/sendMessage`;
-  await axios.post(url, {
-    chat_id: chat,
-    text: msg
-  });
+
+  try {
+    await axios.post(url, {
+      chat_id: chat,
+      text: msg
+    });
+  } catch (err) {
+    console.error("Failed to send Telegram message:", err.message);
+  }
 }
 
 // -----------------------------
