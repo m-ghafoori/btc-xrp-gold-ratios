@@ -9,6 +9,10 @@ jobs:
   run:
     runs-on: ubuntu-latest
 
+    env:
+      TELEGRAM_BOT: ${{ secrets.TELEGRAM_BOT }}
+      TELEGRAM_CHAT: ${{ secrets.TELEGRAM_CHAT }}
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
