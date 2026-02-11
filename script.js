@@ -6,8 +6,8 @@ const STATE_FILE = "state.json";
 // Heartbeat every 48 minutes
 const HEARTBEAT_INTERVAL_HOURS = 0.8; // 48 minutes
 
-// Warning if workflow delayed by 18+ minutes
-const WARNING_INTERVAL_HOURS = 0.3; // 18 minutes
+// Warning if workflow delayed by 27+ minutes
+const WARNING_INTERVAL_HOURS = 0.45; // 27 minutes
 
 // -----------------------------
 // API FETCH FUNCTIONS
