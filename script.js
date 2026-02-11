@@ -2,7 +2,7 @@ const axios = require("axios");
 const fs = require("fs");
 
 const STATE_FILE = "state.json";
-const WORKFLOW_HEALTH_INTERVAL_HOURS = 0.5; // 30 minutes
+const WORKFLOW_HEALTH_INTERVAL_HOURS = 0.4; // 24 minutes
 
 // -----------------------------
 // API FETCH FUNCTIONS
