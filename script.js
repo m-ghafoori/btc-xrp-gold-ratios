@@ -2,7 +2,7 @@ const axios = require("axios");
 const fs = require("fs");
 
 const STATE_FILE = "state.json";
-const HEARTBEAT_INTERVAL_HOURS = 24;
+const WORKFLOW_HEALTH_INTERVAL_HOURS = 0.5; // 30 minutes
 
 // -----------------------------
 // API FETCH FUNCTIONS
@@ -123,11 +123,12 @@ async function sendTelegram(msg) {
 }
 
 // -----------------------------
-// MAIN LOGIC WITH HEARTBEAT
+// MAIN LOGIC (NO HEARTBEAT)
 // -----------------------------
 async function main() {
   let prices;
 
+  // Try all APIs safely
   try {
     prices = await fetchPrices();
   } catch (e) {
@@ -139,36 +140,38 @@ async function main() {
   const now = Date.now();
   const prev = loadState();
 
-  let shouldSendHeartbeat = false;
+  // -----------------------------
+  // WORKFLOW HEALTH CHECK
+  // -----------------------------
+  if (prev && prev.lastRun) {
+    const hoursSinceLast = (now - prev.lastRun) / (1000 * 60 * 60);
 
-  if (!prev || !prev.lastHeartbeat) {
-    shouldSendHeartbeat = true;
-  } else {
-    const hoursSinceLast = (now - prev.lastHeartbeat) / (1000 * 60 * 60);
-    if (hoursSinceLast >= HEARTBEAT_INTERVAL_HOURS) {
-      shouldSendHeartbeat = true;
+    if (hoursSinceLast >= WORKFLOW_HEALTH_INTERVAL_HOURS) {
+      await sendTelegram(
+        `⚠️ Warning: Workflow did not run for ${hoursSinceLast.toFixed(2)} hours`
+      );
     }
   }
 
+  // -----------------------------
+  // RATIO CHANGE DETECTION
+  // -----------------------------
   const ratiosChanged =
     !prev ||
     prev.bg !== ratios.bg ||
     prev.br !== ratios.br ||
     prev.gr !== ratios.gr;
 
-  if (shouldSendHeartbeat) {
-    await sendTelegram(
-      `💓 Heartbeat\n${prices.source} | B/G: ${ratios.bg} | B/R: ${ratios.br} | G/R: ${ratios.gr}`
-    );
-  } else if (ratiosChanged) {
+  if (ratiosChanged) {
     await sendTelegram(
       `${prices.source} | B/G: ${ratios.bg} | B/R: ${ratios.br} | G/R: ${ratios.gr}`
     );
   }
 
+  // Save state
   saveState({
     ...ratios,
-    lastHeartbeat: now
+    lastRun: now
   });
 }
 
