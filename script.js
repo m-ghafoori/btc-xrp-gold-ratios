@@ -2,7 +2,7 @@ const axios = require("axios");
 const fs = require("fs");
 
 const STATE_FILE = "state.json";
-const WORKFLOW_HEALTH_INTERVAL_HOURS = 0.4; // 24 minutes
+const INTERVAL_HOURS = 0.8; // 48 minutes
 
 // -----------------------------
 // API FETCH FUNCTIONS
@@ -123,7 +123,7 @@ async function sendTelegram(msg) {
 }
 
 // -----------------------------
-// MAIN LOGIC (NO HEARTBEAT)
+// MAIN LOGIC (HEARTBEAT + TIMESTAMP CHECK + WARNING FLAG)
 // -----------------------------
 async function main() {
   let prices;
@@ -140,16 +140,31 @@ async function main() {
   const now = Date.now();
   const prev = loadState();
 
+  let shouldSendHeartbeat = false;
+  let shouldSendWarning = false;
+
   // -----------------------------
-  // WORKFLOW HEALTH CHECK
+  // TIMESTAMP CHECK (DELAY DETECTION)
   // -----------------------------
   if (prev && prev.lastRun) {
     const hoursSinceLast = (now - prev.lastRun) / (1000 * 60 * 60);
 
-    if (hoursSinceLast >= WORKFLOW_HEALTH_INTERVAL_HOURS) {
-      await sendTelegram(
-        `⚠️ Warning: Workflow did not run for ${hoursSinceLast.toFixed(2)} hours`
-      );
+    if (hoursSinceLast >= INTERVAL_HOURS) {
+      if (!prev.warningSent) {
+        shouldSendWarning = true;
+      }
+    }
+  }
+
+  // -----------------------------
+  // HEARTBEAT CHECK (FULL SHUTDOWN DETECTION)
+  // -----------------------------
+  if (!prev || !prev.lastHeartbeat) {
+    shouldSendHeartbeat = true;
+  } else {
+    const hoursSinceHeartbeat = (now - prev.lastHeartbeat) / (1000 * 60 * 60);
+    if (hoursSinceHeartbeat >= INTERVAL_HOURS) {
+      shouldSendHeartbeat = true;
     }
   }
 
@@ -162,16 +177,35 @@ async function main() {
     prev.br !== ratios.br ||
     prev.gr !== ratios.gr;
 
+  // -----------------------------
+  // SEND MESSAGES
+  // -----------------------------
+  if (shouldSendWarning) {
+    await sendTelegram(
+      `⚠️ Warning: Workflow did not run for ${( (now - prev.lastRun) / (1000 * 60 * 60) ).toFixed(2)} hours`
+    );
+  }
+
+  if (shouldSendHeartbeat) {
+    await sendTelegram(
+      `💓 Heartbeat\n${prices.source} | B/G: ${ratios.bg} | B/R: ${ratios.br} | G/R: ${ratios.gr}`
+    );
+  }
+
   if (ratiosChanged) {
     await sendTelegram(
       `${prices.source} | B/G: ${ratios.bg} | B/R: ${ratios.br} | G/R: ${ratios.gr}`
     );
   }
 
-  // Save state
+  // -----------------------------
+  // SAVE STATE
+  // -----------------------------
   saveState({
     ...ratios,
-    lastRun: now
+    lastRun: now,
+    lastHeartbeat: shouldSendHeartbeat ? now : (prev ? prev.lastHeartbeat : now),
+    warningSent: shouldSendWarning ? true : false
   });
 }
 
