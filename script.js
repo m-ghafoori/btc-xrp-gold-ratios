@@ -2,7 +2,12 @@ const axios = require("axios");
 const fs = require("fs");
 
 const STATE_FILE = "state.json";
-const INTERVAL_HOURS = 0.8; // 48 minutes
+
+// Heartbeat every 48 minutes
+const HEARTBEAT_INTERVAL_HOURS = 0.8; // 48 minutes
+
+// Warning if workflow delayed by 18+ minutes
+const WARNING_INTERVAL_HOURS = 0.3; // 18 minutes
 
 // -----------------------------
 // API FETCH FUNCTIONS
@@ -123,7 +128,7 @@ async function sendTelegram(msg) {
 }
 
 // -----------------------------
-// MAIN LOGIC (HEARTBEAT + TIMESTAMP CHECK + WARNING FLAG)
+// MAIN LOGIC
 // -----------------------------
 async function main() {
   let prices;
@@ -140,31 +145,29 @@ async function main() {
   const now = Date.now();
   const prev = loadState();
 
-  let shouldSendHeartbeat = false;
-  let shouldSendWarning = false;
+  let sendWarning = false;
+  let sendHeartbeat = false;
 
   // -----------------------------
-  // TIMESTAMP CHECK (DELAY DETECTION)
+  // TIMESTAMP DELAY CHECK (24 min)
   // -----------------------------
   if (prev && prev.lastRun) {
     const hoursSinceLast = (now - prev.lastRun) / (1000 * 60 * 60);
 
-    if (hoursSinceLast >= INTERVAL_HOURS) {
-      if (!prev.warningSent) {
-        shouldSendWarning = true;
-      }
+    if (hoursSinceLast >= WARNING_INTERVAL_HOURS && !prev.warningSent) {
+      sendWarning = true;
     }
   }
 
   // -----------------------------
-  // HEARTBEAT CHECK (FULL SHUTDOWN DETECTION)
+  // HEARTBEAT CHECK (48 min)
   // -----------------------------
   if (!prev || !prev.lastHeartbeat) {
-    shouldSendHeartbeat = true;
+    sendHeartbeat = true;
   } else {
     const hoursSinceHeartbeat = (now - prev.lastHeartbeat) / (1000 * 60 * 60);
-    if (hoursSinceHeartbeat >= INTERVAL_HOURS) {
-      shouldSendHeartbeat = true;
+    if (hoursSinceHeartbeat >= HEARTBEAT_INTERVAL_HOURS) {
+      sendHeartbeat = true;
     }
   }
 
@@ -180,13 +183,14 @@ async function main() {
   // -----------------------------
   // SEND MESSAGES
   // -----------------------------
-  if (shouldSendWarning) {
+  if (sendWarning) {
+    const hoursSinceLast = (now - prev.lastRun) / (1000 * 60 * 60);
     await sendTelegram(
-      `⚠️ Warning: Workflow did not run for ${( (now - prev.lastRun) / (1000 * 60 * 60) ).toFixed(2)} hours`
+      `⚠️ Warning: Workflow did not run for ${hoursSinceLast.toFixed(2)} hours`
     );
   }
 
-  if (shouldSendHeartbeat) {
+  if (sendHeartbeat) {
     await sendTelegram(
       `💓 Heartbeat\n${prices.source} | B/G: ${ratios.bg} | B/R: ${ratios.br} | G/R: ${ratios.gr}`
     );
@@ -204,8 +208,8 @@ async function main() {
   saveState({
     ...ratios,
     lastRun: now,
-    lastHeartbeat: shouldSendHeartbeat ? now : (prev ? prev.lastHeartbeat : now),
-    warningSent: shouldSendWarning ? true : false
+    lastHeartbeat: sendHeartbeat ? now : (prev ? prev.lastHeartbeat : now),
+    warningSent: sendWarning ? true : false
   });
 }
 
