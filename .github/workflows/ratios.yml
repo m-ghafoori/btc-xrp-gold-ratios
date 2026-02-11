@@ -4,17 +4,35 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "*/15 * * * *"
-    
+
 jobs:
   run:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Restore previous state
+        uses: actions/download-artifact@v3
+        with:
+          name: state
+        continue-on-error: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
         with:
           node-version: 18
-      - run: npm install axios
-      - run: node script.js
-        env:
-          TELEGRAM_BOT: ${{ secrets.TELEGRAM_BOT }}
-          TELEGRAM_CHAT: ${{ secrets.TELEGRAM_CHAT }}
+
+      - name: Install axios
+        run: npm install axios
+
+      - name: Run script
+        run: node script.js
+
+      - name: Save state
+        uses: actions/upload-artifact@v3
+        with:
+          name: state
+          path: state.json
+        if: always()
