@@ -2,12 +2,12 @@ const axios = require("axios");
 const fs = require("fs");
 
 const STATE_FILE = "state.json";
+const HEARTBEAT_INTERVAL_HOURS = 24;
 
 // -----------------------------
 // API FETCH FUNCTIONS
 // -----------------------------
 
-// 1. Nobitex (FIRST PRIORITY)
 async function fetchFromNobitex() {
   const url = "https://api.nobitex.ir/market/stats?srcCurrency=btc,xrp&dstCurrency=usdt";
   const data = (await axios.get(url)).data;
@@ -20,7 +20,6 @@ async function fetchFromNobitex() {
   };
 }
 
-// 2. CoinGecko
 async function fetchFromCoingecko() {
   const url =
     "https://api.coingecko.com/api/v3/simple/price" +
@@ -36,28 +35,26 @@ async function fetchFromCoingecko() {
   };
 }
 
-// 3. CoinPaprika
 async function fetchFromCoinpaprika() {
   const btc = (await axios.get("https://api.coinpaprika.com/v1/tickers/btc-bitcoin")).data.quotes.USD.price;
   const xrp = (await axios.get("https://api.coinpaprika.com/v1/tickers/xrp-xrp")).data.quotes.USD.price;
 
   return {
     source: "CoinPaprika",
-    btc: btc,
-    xrp: xrp,
+    btc,
+    xrp,
     gold: null
   };
 }
 
-// 4. Binance
 async function fetchFromBinance() {
   const btc = parseFloat((await axios.get("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT")).data.price);
   const xrp = parseFloat((await axios.get("https://api.binance.com/api/v3/ticker/price?symbol=XRPUSDT")).data.price);
 
   return {
     source: "Binance",
-    btc: btc,
-    xrp: xrp,
+    btc,
+    xrp,
     gold: null
   };
 }
@@ -67,10 +64,10 @@ async function fetchFromBinance() {
 // -----------------------------
 async function fetchPrices() {
   const apis = [
-    fetchFromNobitex,     // Try Nobitex FIRST
-    fetchFromCoingecko,   // Then CoinGecko
-    fetchFromCoinpaprika, // Then CoinPaprika
-    fetchFromBinance      // Then Binance
+    fetchFromNobitex,
+    fetchFromCoingecko,
+    fetchFromCoinpaprika,
+    fetchFromBinance
   ];
 
   for (const api of apis) {
@@ -126,34 +123,53 @@ async function sendTelegram(msg) {
 }
 
 // -----------------------------
-// MAIN LOGIC (NOW FULLY SAFE)
+// MAIN LOGIC WITH HEARTBEAT
 // -----------------------------
 async function main() {
   let prices;
 
-  // Try all APIs safely
   try {
     prices = await fetchPrices();
   } catch (e) {
-    // Graceful fallback — no workflow failure
     await sendTelegram("⚠️ All APIs failed to fetch prices");
     return;
   }
 
   const ratios = calculateRatios(prices.btc, prices.xrp, prices.gold);
+  const now = Date.now();
   const prev = loadState();
 
-  // Detect changes
-  if (!prev || prev.bg !== ratios.bg || prev.br !== ratios.br || prev.gr !== ratios.gr) {
-    const msg =
-      `${prices.source} | ` +
-      `B/G: ${ratios.bg} | ` +
-      `B/R: ${ratios.br} | ` +
-      `G/R: ${ratios.gr}`;
+  let shouldSendHeartbeat = false;
 
-    await sendTelegram(msg);
-    saveState(ratios);
+  if (!prev || !prev.lastHeartbeat) {
+    shouldSendHeartbeat = true;
+  } else {
+    const hoursSinceLast = (now - prev.lastHeartbeat) / (1000 * 60 * 60);
+    if (hoursSinceLast >= HEARTBEAT_INTERVAL_HOURS) {
+      shouldSendHeartbeat = true;
+    }
   }
+
+  const ratiosChanged =
+    !prev ||
+    prev.bg !== ratios.bg ||
+    prev.br !== ratios.br ||
+    prev.gr !== ratios.gr;
+
+  if (shouldSendHeartbeat) {
+    await sendTelegram(
+      `💓 Heartbeat\n${prices.source} | B/G: ${ratios.bg} | B/R: ${ratios.br} | G/R: ${ratios.gr}`
+    );
+  } else if (ratiosChanged) {
+    await sendTelegram(
+      `${prices.source} | B/G: ${ratios.bg} | B/R: ${ratios.br} | G/R: ${ratios.gr}`
+    );
+  }
+
+  saveState({
+    ...ratios,
+    lastHeartbeat: now
+  });
 }
 
 main();
