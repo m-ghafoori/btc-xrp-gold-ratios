@@ -3,15 +3,23 @@ const fs = require("fs");
 
 const STATE_FILE = "state.json";
 
-// Heartbeat every 48 minutes
-const HEARTBEAT_INTERVAL_HOURS = 0.8; // 48 minutes
+// =============================
+// NEW SETTINGS
+// =============================
 
-// Warning if workflow delayed by 27+ minutes
-const WARNING_INTERVAL_HOURS = 0.45; // 27 minutes
+// Heartbeat every 6 hours
+const HEARTBEAT_INTERVAL_HOURS = 6;
 
-// -----------------------------
+// Warning if workflow delayed by 3 hours
+const WARNING_INTERVAL_HOURS = 3;
+
+// Boundary system
+const LOWER_BOUND = 32;
+const UPPER_BOUND = 38;
+
+// =============================
 // API FETCH FUNCTIONS
-// -----------------------------
+// =============================
 
 async function fetchFromNobitex() {
   const url = "https://api.nobitex.ir/market/stats?srcCurrency=btc,xrp&dstCurrency=usdt";
@@ -64,9 +72,9 @@ async function fetchFromBinance() {
   };
 }
 
-// -----------------------------
+// =============================
 // PRICE FETCHER WITH PRIORITY ORDER
-// -----------------------------
+// =============================
 async function fetchPrices() {
   const apis = [
     fetchFromNobitex,
@@ -86,9 +94,9 @@ async function fetchPrices() {
   throw new Error("All APIs failed");
 }
 
-// -----------------------------
+// =============================
 // RATIO CALCULATION
-// -----------------------------
+// =============================
 function truncate(x) {
   return Math.floor(x);
 }
@@ -101,9 +109,9 @@ function calculateRatios(btc, xrp, gold) {
   };
 }
 
-// -----------------------------
+// =============================
 // STATE HANDLING
-// -----------------------------
+// =============================
 function loadState() {
   if (!fs.existsSync(STATE_FILE)) return null;
   return JSON.parse(fs.readFileSync(STATE_FILE));
@@ -113,10 +121,10 @@ function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state));
 }
 
-// -----------------------------
+// =============================
 // TELEGRAM SENDER
-// -----------------------------
-async function sendTelegram(msg) {
+// =============================
+async function sendTelegram(text) {
   const bot = process.env.TELEGRAM_BOT;
   const chat = process.env.TELEGRAM_CHAT;
 
@@ -130,24 +138,23 @@ async function sendTelegram(msg) {
   try {
     await axios.post(url, {
       chat_id: chat,
-      text: msg
+      text
     });
   } catch (err) {
     console.error("Failed to send Telegram message:", err.message);
   }
 }
 
-// -----------------------------
+// =============================
 // MAIN LOGIC
-// -----------------------------
+// =============================
 async function main() {
   let prices;
 
-  // Try all APIs safely
   try {
     prices = await fetchPrices();
   } catch (e) {
-    await sendTelegram("⚠️ All APIs failed to fetch prices");
+    await sendTelegram("the_source: BG null | BR null | GR null");
     return;
   }
 
@@ -157,21 +164,21 @@ async function main() {
 
   let sendWarning = false;
   let sendHeartbeat = false;
+  let boundaryTriggered = false;
 
-  // -----------------------------
-  // TIMESTAMP DELAY CHECK (24 min)
-  // -----------------------------
+  // =============================
+  // WORKFLOW DELAY CHECK (3 hours)
+  // =============================
   if (prev && prev.lastRun) {
     const hoursSinceLast = (now - prev.lastRun) / (1000 * 60 * 60);
-
     if (hoursSinceLast >= WARNING_INTERVAL_HOURS && !prev.warningSent) {
       sendWarning = true;
     }
   }
 
-  // -----------------------------
-  // HEARTBEAT CHECK (48 min)
-  // -----------------------------
+  // =============================
+  // HEARTBEAT CHECK (6 hours)
+  // =============================
   if (!prev || !prev.lastHeartbeat) {
     sendHeartbeat = true;
   } else {
@@ -181,45 +188,68 @@ async function main() {
     }
   }
 
-  // -----------------------------
-  // RATIO CHANGE DETECTION
-  // -----------------------------
-  const ratiosChanged =
-    !prev ||
-    prev.bg !== ratios.bg ||
-    prev.br !== ratios.br ||
-    prev.gr !== ratios.gr;
+  // =============================
+  // BOUNDARY LOGIC
+  // =============================
+  let lastState = prev ? prev.state : "inside";
 
-  // -----------------------------
+  if (ratios.gr < LOWER_BOUND) {
+    if (lastState !== "below") {
+      boundaryTriggered = true;
+      lastState = "below";
+    } else {
+      const hoursSinceWarning = (now - (prev ? prev.lastWarning : 0)) / (1000 * 60 * 60);
+      if (hoursSinceWarning >= WARNING_INTERVAL_HOURS) {
+        boundaryTriggered = true;
+      }
+    }
+  } else if (ratios.gr > UPPER_BOUND) {
+    if (lastState !== "above") {
+      boundaryTriggered = true;
+      lastState = "above";
+    } else {
+      const hoursSinceWarning = (now - (prev ? prev.lastWarning : 0)) / (1000 * 60 * 60);
+      if (hoursSinceWarning >= WARNING_INTERVAL_HOURS) {
+        boundaryTriggered = true;
+      }
+    }
+  } else {
+    if (lastState !== "inside") {
+      boundaryTriggered = true;
+    }
+    lastState = "inside";
+  }
+
+  // =============================
+  // MESSAGE FORMAT
+  // =============================
+  const msg = `the_source: BG ${ratios.bg} | BR ${ratios.br} | GR ${ratios.gr}`;
+
+  // =============================
   // SEND MESSAGES
-  // -----------------------------
+  // =============================
   if (sendWarning) {
-    const hoursSinceLast = (now - prev.lastRun) / (1000 * 60 * 60);
-    await sendTelegram(
-      ` \u200B ⚠️ Warning: Workflow did not run for ${hoursSinceLast.toFixed(2)} hours`
-    );
+    await sendTelegram(msg);
   }
 
   if (sendHeartbeat) {
-    await sendTelegram(
-      ` \u200B 💓 Heartbeat\n${prices.source} | B/G: ${ratios.bg} | B/R: ${ratios.br} | G/R: ${ratios.gr}`
-    );
+    await sendTelegram(msg);
   }
 
-  if (ratiosChanged) {
-    await sendTelegram(
-      ` \u200B ${prices.source} | B/G: ${ratios.bg} | B/R: ${ratios.br} | G/R: ${ratios.gr}`
-    );
+  if (boundaryTriggered) {
+    await sendTelegram(msg);
   }
 
-  // -----------------------------
+  // =============================
   // SAVE STATE
-  // -----------------------------
+  // =============================
   saveState({
     ...ratios,
     lastRun: now,
     lastHeartbeat: sendHeartbeat ? now : (prev ? prev.lastHeartbeat : now),
-    warningSent: sendWarning ? true : false
+    lastWarning: boundaryTriggered ? now : (prev ? prev.lastWarning : now),
+    warningSent: sendWarning ? true : false,
+    state: lastState
   });
 }
 
