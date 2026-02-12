@@ -154,7 +154,7 @@ async function main() {
   try {
     prices = await fetchPrices();
   } catch (e) {
-    await sendTelegram("the_source: BG null | BR null | GR null");
+    await sendTelegram("FetchError: BG null | BR null | GR null");
     return;
   }
 
@@ -223,7 +223,7 @@ async function main() {
   // =============================
   // MESSAGE FORMAT
   // =============================
-  const msg = `the_source: BG ${ratios.bg} | BR ${ratios.br} | GR ${ratios.gr}`;
+  const msg = `${prices.source}: BG ${ratios.bg} | BR ${ratios.br} | GR ${ratios.gr}`;
 
   // =============================
   // SEND MESSAGES
