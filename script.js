@@ -4,18 +4,24 @@ const fs = require("fs");
 const STATE_FILE = "state.json";
 
 // =============================
-// NEW SETTINGS
+// SETTINGS
 // =============================
 
 // Heartbeat every 6 hours
 const HEARTBEAT_INTERVAL_HOURS = 6;
 
-// Warning if workflow delayed by 3 hours
+// Workflow delay warning every 3 hours
 const WARNING_INTERVAL_HOURS = 3;
 
-// Boundary system
-const LOWER_BOUND = 32;
-const UPPER_BOUND = 38;
+// Boundaries
+const BG_LOWER = 12;
+const BG_UPPER = 15;
+
+const BR_LOWER = 47;
+const BR_UPPER = 50;
+
+const GR_LOWER = 32;
+const GR_UPPER = 38;
 
 // =============================
 // API FETCH FUNCTIONS
@@ -113,7 +119,19 @@ function calculateRatios(btc, xrp, gold) {
 // STATE HANDLING
 // =============================
 function loadState() {
-  if (!fs.existsSync(STATE_FILE)) return null;
+  if (!fs.existsSync(STATE_FILE)) {
+    return {
+      bgState: "inside",
+      brState: "inside",
+      grState: "inside",
+      bgLastWarning: 0,
+      brLastWarning: 0,
+      grLastWarning: 0,
+      lastRun: 0,
+      lastHeartbeat: 0,
+      warningSent: false
+    };
+  }
   return JSON.parse(fs.readFileSync(STATE_FILE));
 }
 
@@ -146,6 +164,48 @@ async function sendTelegram(text) {
 }
 
 // =============================
+// BOUNDARY CHECKER
+// =============================
+function checkBoundary(value, lower, upper, prevState, prevWarningTime, now) {
+  let triggered = false;
+  let newState = prevState;
+  let newWarningTime = prevWarningTime;
+
+  if (value < lower) {
+    if (prevState !== "below") {
+      triggered = true;
+      newState = "below";
+      newWarningTime = now;
+    } else {
+      const hours = (now - prevWarningTime) / (1000 * 60 * 60);
+      if (hours >= WARNING_INTERVAL_HOURS) {
+        triggered = true;
+        newWarningTime = now;
+      }
+    }
+  } else if (value > upper) {
+    if (prevState !== "above") {
+      triggered = true;
+      newState = "above";
+      newWarningTime = now;
+    } else {
+      const hours = (now - prevWarningTime) / (1000 * 60 * 60);
+      if (hours >= WARNING_INTERVAL_HOURS) {
+        triggered = true;
+        newWarningTime = now;
+      }
+    }
+  } else {
+    if (prevState !== "inside") {
+      triggered = true;
+    }
+    newState = "inside";
+  }
+
+  return { triggered, newState, newWarningTime };
+}
+
+// =============================
 // MAIN LOGIC
 // =============================
 async function main() {
@@ -162,24 +222,23 @@ async function main() {
   const now = Date.now();
   const prev = loadState();
 
-  let sendWarning = false;
   let sendHeartbeat = false;
-  let boundaryTriggered = false;
+  let sendWorkflowWarning = false;
 
   // =============================
   // WORKFLOW DELAY CHECK (3 hours)
   // =============================
-  if (prev && prev.lastRun) {
+  if (prev.lastRun) {
     const hoursSinceLast = (now - prev.lastRun) / (1000 * 60 * 60);
     if (hoursSinceLast >= WARNING_INTERVAL_HOURS && !prev.warningSent) {
-      sendWarning = true;
+      sendWorkflowWarning = true;
     }
   }
 
   // =============================
   // HEARTBEAT CHECK (6 hours)
   // =============================
-  if (!prev || !prev.lastHeartbeat) {
+  if (!prev.lastHeartbeat) {
     sendHeartbeat = true;
   } else {
     const hoursSinceHeartbeat = (now - prev.lastHeartbeat) / (1000 * 60 * 60);
@@ -189,55 +248,61 @@ async function main() {
   }
 
   // =============================
-  // BOUNDARY LOGIC
+  // BOUNDARY CHECKS
   // =============================
-  let lastState = prev ? prev.state : "inside";
+  const bgCheck = checkBoundary(
+    ratios.bg,
+    BG_LOWER,
+    BG_UPPER,
+    prev.bgState,
+    prev.bgLastWarning,
+    now
+  );
 
-  if (ratios.gr < LOWER_BOUND) {
-    if (lastState !== "below") {
-      boundaryTriggered = true;
-      lastState = "below";
-    } else {
-      const hoursSinceWarning = (now - (prev ? prev.lastWarning : 0)) / (1000 * 60 * 60);
-      if (hoursSinceWarning >= WARNING_INTERVAL_HOURS) {
-        boundaryTriggered = true;
-      }
-    }
-  } else if (ratios.gr > UPPER_BOUND) {
-    if (lastState !== "above") {
-      boundaryTriggered = true;
-      lastState = "above";
-    } else {
-      const hoursSinceWarning = (now - (prev ? prev.lastWarning : 0)) / (1000 * 60 * 60);
-      if (hoursSinceWarning >= WARNING_INTERVAL_HOURS) {
-        boundaryTriggered = true;
-      }
-    }
-  } else {
-    if (lastState !== "inside") {
-      boundaryTriggered = true;
-    }
-    lastState = "inside";
-  }
+  const brCheck = checkBoundary(
+    ratios.br,
+    BR_LOWER,
+    BR_UPPER,
+    prev.brState,
+    prev.brLastWarning,
+    now
+  );
+
+  const grCheck = checkBoundary(
+    ratios.gr,
+    GR_LOWER,
+    GR_UPPER,
+    prev.grState,
+    prev.grLastWarning,
+    now
+  );
 
   // =============================
-  // MESSAGE FORMAT
+  // MESSAGE TEMPLATE
   // =============================
-  const msg = `${prices.source}: BG ${ratios.bg} | BR ${ratios.br} | GR ${ratios.gr}`;
+  const baseMsg = `${prices.source}: BG ${ratios.bg} | BR ${ratios.br} | GR ${ratios.gr}`;
 
   // =============================
   // SEND MESSAGES
   // =============================
-  if (sendWarning) {
-    await sendTelegram(msg);
+  if (sendWorkflowWarning) {
+    await sendTelegram(baseMsg);
   }
 
   if (sendHeartbeat) {
-    await sendTelegram(msg);
+    await sendTelegram(baseMsg);
   }
 
-  if (boundaryTriggered) {
-    await sendTelegram(msg);
+  if (bgCheck.triggered) {
+    await sendTelegram(`${baseMsg} (BG)`);
+  }
+
+  if (brCheck.triggered) {
+    await sendTelegram(`${baseMsg} (BR)`);
+  }
+
+  if (grCheck.triggered) {
+    await sendTelegram(`${baseMsg} (GR)`);
   }
 
   // =============================
@@ -246,10 +311,16 @@ async function main() {
   saveState({
     ...ratios,
     lastRun: now,
-    lastHeartbeat: sendHeartbeat ? now : (prev ? prev.lastHeartbeat : now),
-    lastWarning: boundaryTriggered ? now : (prev ? prev.lastWarning : now),
-    warningSent: sendWarning ? true : false,
-    state: lastState
+    lastHeartbeat: sendHeartbeat ? now : prev.lastHeartbeat,
+    warningSent: sendWorkflowWarning ? true : prev.warningSent,
+
+    bgState: bgCheck.newState,
+    brState: brCheck.newState,
+    grState: grCheck.newState,
+
+    bgLastWarning: bgCheck.newWarningTime,
+    brLastWarning: brCheck.newWarningTime,
+    grLastWarning: grCheck.newWarningTime
   });
 }
 
