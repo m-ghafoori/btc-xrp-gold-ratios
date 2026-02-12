@@ -14,14 +14,14 @@ const HEARTBEAT_INTERVAL_HOURS = 6;
 const WARNING_INTERVAL_HOURS = 3;
 
 // Boundaries
-const BG_LOWER = 12;
+const BG_LOWER = 11;
 const BG_UPPER = 15;
 
 const BR_LOWER = 47;
 const BR_UPPER = 50;
 
-const GR_LOWER = 32;
-const GR_UPPER = 38;
+const GR_LOWER = 33;
+const GR_UPPER = 40;
 
 // =============================
 // API FETCH FUNCTIONS
