@@ -2,7 +2,7 @@ name: Ratio Monitor
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # run every 10 minutes
+    - cron: "*/5 * * * *"   # run every 5 minutes
   workflow_dispatch:
 
 jobs:
@@ -25,4 +25,4 @@ jobs:
         env:
           TELEGRAM_BOT: ${{ secrets.TELEGRAM_BOT }}
           TELEGRAM_CHAT: ${{ secrets.TELEGRAM_CHAT }}
-        run: node yourscript.js
+        run: node script.js
