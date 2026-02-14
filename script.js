@@ -1,27 +1,25 @@
 const axios = require("axios");
-const fs = require("fs");
-
-const STATE_FILE = "state.json";
 
 // =============================
 // SETTINGS
 // =============================
 
-// Heartbeat every 6 hours
-const HEARTBEAT_INTERVAL_HOURS = 6;
-
-// Workflow delay warning every 3 hours
-const WARNING_INTERVAL_HOURS = 3;
+// Heartbeat windows (24h format)
+const HEARTBEAT_WINDOWS = [
+  [8, 10],
+  [14, 16],
+  [20, 22]
+];
 
 // Boundaries
-const BG_LOWER = 11;
+const BG_LOWER = 12;
 const BG_UPPER = 15;
 
 const BR_LOWER = 47;
 const BR_UPPER = 50;
 
-const GR_LOWER = 33;
-const GR_UPPER = 40;
+const GR_LOWER = 32;
+const GR_UPPER = 38;
 
 // =============================
 // API FETCH FUNCTIONS
@@ -116,30 +114,6 @@ function calculateRatios(btc, xrp, gold) {
 }
 
 // =============================
-// STATE HANDLING
-// =============================
-function loadState() {
-  if (!fs.existsSync(STATE_FILE)) {
-    return {
-      bgState: "inside",
-      brState: "inside",
-      grState: "inside",
-      bgLastWarning: 0,
-      brLastWarning: 0,
-      grLastWarning: 0,
-      lastRun: 0,
-      lastHeartbeat: 0,
-      warningSent: false
-    };
-  }
-  return JSON.parse(fs.readFileSync(STATE_FILE));
-}
-
-function saveState(state) {
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state));
-}
-
-// =============================
 // TELEGRAM SENDER
 // =============================
 async function sendTelegram(text) {
@@ -164,45 +138,12 @@ async function sendTelegram(text) {
 }
 
 // =============================
-// BOUNDARY CHECKER
+// HEARTBEAT CHECK
 // =============================
-function checkBoundary(value, lower, upper, prevState, prevWarningTime, now) {
-  let triggered = false;
-  let newState = prevState;
-  let newWarningTime = prevWarningTime;
+function isHeartbeatTime() {
+  const hour = new Date().getHours();
 
-  if (value < lower) {
-    if (prevState !== "below") {
-      triggered = true;
-      newState = "below";
-      newWarningTime = now;
-    } else {
-      const hours = (now - prevWarningTime) / (1000 * 60 * 60);
-      if (hours >= WARNING_INTERVAL_HOURS) {
-        triggered = true;
-        newWarningTime = now;
-      }
-    }
-  } else if (value > upper) {
-    if (prevState !== "above") {
-      triggered = true;
-      newState = "above";
-      newWarningTime = now;
-    } else {
-      const hours = (now - prevWarningTime) / (1000 * 60 * 60);
-      if (hours >= WARNING_INTERVAL_HOURS) {
-        triggered = true;
-        newWarningTime = now;
-      }
-    }
-  } else {
-    if (prevState !== "inside") {
-      triggered = true;
-    }
-    newState = "inside";
-  }
-
-  return { triggered, newState, newWarningTime };
+  return HEARTBEAT_WINDOWS.some(([start, end]) => hour >= start && hour <= end);
 }
 
 // =============================
@@ -219,109 +160,30 @@ async function main() {
   }
 
   const ratios = calculateRatios(prices.btc, prices.xrp, prices.gold);
-  const now = Date.now();
-  const prev = loadState();
 
-  let sendHeartbeat = false;
-  let sendWorkflowWarning = false;
-
-  // =============================
-  // WORKFLOW DELAY CHECK (3 hours)
-  // =============================
-  if (prev.lastRun) {
-    const hoursSinceLast = (now - prev.lastRun) / (1000 * 60 * 60);
-    if (hoursSinceLast >= WARNING_INTERVAL_HOURS && !prev.warningSent) {
-      sendWorkflowWarning = true;
-    }
-  }
-
-  // =============================
-  // HEARTBEAT CHECK (6 hours)
-  // =============================
-  if (!prev.lastHeartbeat) {
-    sendHeartbeat = true;
-  } else {
-    const hoursSinceHeartbeat = (now - prev.lastHeartbeat) / (1000 * 60 * 60);
-    if (hoursSinceHeartbeat >= HEARTBEAT_INTERVAL_HOURS) {
-      sendHeartbeat = true;
-    }
-  }
-
-  // =============================
-  // BOUNDARY CHECKS
-  // =============================
-  const bgCheck = checkBoundary(
-    ratios.bg,
-    BG_LOWER,
-    BG_UPPER,
-    prev.bgState,
-    prev.bgLastWarning,
-    now
-  );
-
-  const brCheck = checkBoundary(
-    ratios.br,
-    BR_LOWER,
-    BR_UPPER,
-    prev.brState,
-    prev.brLastWarning,
-    now
-  );
-
-  const grCheck = checkBoundary(
-    ratios.gr,
-    GR_LOWER,
-    GR_UPPER,
-    prev.grState,
-    prev.grLastWarning,
-    now
-  );
-
-  // =============================
-  // MESSAGE TEMPLATE
-  // =============================
   const baseMsg = `${prices.source}: BG ${ratios.bg} | BR ${ratios.br} | GR ${ratios.gr}`;
 
   // =============================
-  // SEND MESSAGES
+  // HEARTBEAT
   // =============================
-  if (sendWorkflowWarning) {
+  if (isHeartbeatTime()) {
     await sendTelegram(baseMsg);
   }
 
-  if (sendHeartbeat) {
-    await sendTelegram(baseMsg);
-  }
-
-  if (bgCheck.triggered) {
+  // =============================
+  // BOUNDARY ALERTS (STATELESS)
+  // =============================
+  if (ratios.bg !== null && (ratios.bg < BG_LOWER || ratios.bg > BG_UPPER)) {
     await sendTelegram(`${baseMsg} (BG)`);
   }
 
-  if (brCheck.triggered) {
+  if (ratios.br < BR_LOWER || ratios.br > BR_UPPER) {
     await sendTelegram(`${baseMsg} (BR)`);
   }
 
-  if (grCheck.triggered) {
+  if (ratios.gr !== null && (ratios.gr < GR_LOWER || ratios.gr > GR_UPPER)) {
     await sendTelegram(`${baseMsg} (GR)`);
   }
-
-  // =============================
-  // SAVE STATE
-  // =============================
-  saveState({
-    ...ratios,
-    lastRun: now,
-    lastHeartbeat: sendHeartbeat ? now : prev.lastHeartbeat,
-    warningSent: sendWorkflowWarning ? true : prev.warningSent,
-
-    bgState: bgCheck.newState,
-    brState: brCheck.newState,
-    grState: grCheck.newState,
-
-    bgLastWarning: bgCheck.newWarningTime,
-    brLastWarning: brCheck.newWarningTime,
-    grLastWarning: grCheck.newWarningTime
-  });
 }
 
 main();
