@@ -32,35 +32,7 @@ async function fetchFromNobitex() {
   return {
     source: "Nobitex",
     btc: parseFloat(data.stats["btc-usdt"].bestSell),
-    xrp: parseFloat(data.stats["xrp-usdt"].bestSell),
-    gold: null
-  };
-}
-
-async function fetchFromCoingecko() {
-  const url =
-    "https://api.coingecko.com/api/v3/simple/price" +
-    "?ids=bitcoin,ripple,tether-gold&vs_currencies=usd";
-
-  const data = (await axios.get(url)).data;
-
-  return {
-    source: "CoinGecko",
-    btc: data.bitcoin.usd,
-    xrp: data.ripple.usd,
-    gold: data["tether-gold"].usd
-  };
-}
-
-async function fetchFromCoinpaprika() {
-  const btc = (await axios.get("https://api.coinpaprika.com/v1/tickers/btc-bitcoin")).data.quotes.USD.price;
-  const xrp = (await axios.get("https://api.coinpaprika.com/v1/tickers/xrp-xrp")).data.quotes.USD.price;
-
-  return {
-    source: "CoinPaprika",
-    btc,
-    xrp,
-    gold: null
+    xrp: parseFloat(data.stats["xrp-usdt"].bestSell)
   };
 }
 
@@ -71,9 +43,45 @@ async function fetchFromBinance() {
   return {
     source: "Binance",
     btc,
-    xrp,
-    gold: null
+    xrp
   };
+}
+
+async function fetchFromCoingecko() {
+  const url =
+    "https://api.coingecko.com/api/v3/simple/price" +
+    "?ids=bitcoin,ripple&vs_currencies=usd";
+
+  const data = (await axios.get(url)).data;
+
+  return {
+    source: "CoinGecko",
+    btc: data.bitcoin.usd,
+    xrp: data.ripple.usd
+  };
+}
+
+async function fetchFromCoinpaprika() {
+  const btc = (await axios.get("https://api.coinpaprika.com/v1/tickers/btc-bitcoin")).data.quotes.USD.price;
+  const xrp = (await axios.get("https://api.coinpaprika.com/v1/tickers/xrp-xrp")).data.quotes.USD.price;
+
+  return {
+    source: "CoinPaprika",
+    btc,
+    xrp
+  };
+}
+
+// =============================
+// ALWAYS FETCH GOLD FROM COINGECKO
+// =============================
+async function fetchGold() {
+  const url =
+    "https://api.coingecko.com/api/v3/simple/price" +
+    "?ids=tether-gold&vs_currencies=usd";
+
+  const data = (await axios.get(url)).data;
+  return data["tether-gold"].usd;
 }
 
 // =============================
@@ -89,7 +97,8 @@ async function fetchPrices() {
 
   for (const api of apis) {
     try {
-      return await api();
+      const result = await api();
+      return result;
     } catch (e) {
       continue;
     }
@@ -107,9 +116,9 @@ function truncate(x) {
 
 function calculateRatios(btc, xrp, gold) {
   return {
-    bg: gold ? truncate(btc / gold) : null,
+    bg: truncate(btc / gold),
     br: truncate((btc / xrp) / 1000),
-    gr: gold ? truncate((gold / xrp) / 100) : null
+    gr: truncate((gold / xrp) / 100)
   };
 }
 
@@ -142,7 +151,6 @@ async function sendTelegram(text) {
 // =============================
 function isHeartbeatTime() {
   const hour = new Date().getHours();
-
   return HEARTBEAT_WINDOWS.some(([start, end]) => hour >= start && hour <= end);
 }
 
@@ -159,7 +167,16 @@ async function main() {
     return;
   }
 
-  const ratios = calculateRatios(prices.btc, prices.xrp, prices.gold);
+  // Always fetch gold separately
+  let gold;
+  try {
+    gold = await fetchGold();
+  } catch (e) {
+    await sendTelegram("FetchError: Gold unavailable");
+    return;
+  }
+
+  const ratios = calculateRatios(prices.btc, prices.xrp, gold);
 
   const baseMsg = `${prices.source}: BG ${ratios.bg} | BR ${ratios.br} | GR ${ratios.gr}`;
 
@@ -173,7 +190,7 @@ async function main() {
   // =============================
   // BOUNDARY ALERTS (STATELESS)
   // =============================
-  if (ratios.bg !== null && (ratios.bg < BG_LOWER || ratios.bg > BG_UPPER)) {
+  if (ratios.bg < BG_LOWER || ratios.bg > BG_UPPER) {
     await sendTelegram(`${baseMsg} (BG)`);
   }
 
@@ -181,7 +198,7 @@ async function main() {
     await sendTelegram(`${baseMsg} (BR)`);
   }
 
-  if (ratios.gr !== null && (ratios.gr < GR_LOWER || ratios.gr > GR_UPPER)) {
+  if (ratios.gr < GR_LOWER || ratios.gr > GR_UPPER) {
     await sendTelegram(`${baseMsg} (GR)`);
   }
 }
