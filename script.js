@@ -82,9 +82,9 @@ async function fetchFromBinance() {
 async function fetchPrices() {
   const apis = [
     fetchFromNobitex,
+    fetchFromBinance,
     fetchFromCoingecko,
-    fetchFromCoinpaprika,
-    fetchFromBinance
+    fetchFromCoinpaprika
   ];
 
   for (const api of apis) {
