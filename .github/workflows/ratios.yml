@@ -1,42 +1,28 @@
-name: Ratios
+name: Ratio Monitor
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/10 * * * *"   # run every 10 minutes
+  workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
 
-    env:
-      TELEGRAM_BOT: ${{ secrets.TELEGRAM_BOT }}
-      TELEGRAM_CHAT: ${{ secrets.TELEGRAM_CHAT }}
-
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
-
-      - name: Restore previous state
-        uses: actions/download-artifact@v4
-        with:
-          name: state
-        continue-on-error: true
+        uses: actions/checkout@v4
 
       - name: Setup Node
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
 
-      - name: Install axios
+      - name: Install dependencies
         run: npm install axios
 
       - name: Run script
-        run: node script.js
-
-      - name: Save state
-        uses: actions/upload-artifact@v4
-        with:
-          name: state
-          path: state.json
-        if: always()
+        env:
+          TELEGRAM_BOT: ${{ secrets.TELEGRAM_BOT }}
+          TELEGRAM_CHAT: ${{ secrets.TELEGRAM_CHAT }}
+        run: node yourscript.js
