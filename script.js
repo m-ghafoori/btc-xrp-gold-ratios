@@ -12,14 +12,14 @@ const HEARTBEAT_WINDOWS = [
 ];
 
 // Boundaries
-const BG_LOWER = 12;
+const BG_LOWER = 11;
 const BG_UPPER = 15;
 
-const BR_LOWER = 47;
+const BR_LOWER = 46;
 const BR_UPPER = 50;
 
 const GR_LOWER = 32;
-const GR_UPPER = 38;
+const GR_UPPER = 37;
 
 // =============================
 // API FETCH FUNCTIONS
