@@ -6,9 +6,9 @@ const axios = require("axios");
 
 // Heartbeat windows (24h format)
 const HEARTBEAT_WINDOWS = [
-  [8, 10],
-  [14, 16],
-  [20, 22]
+  [5, 7],
+  [11, 13],
+  [17, 19]
 ];
 
 // Boundaries
