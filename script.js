@@ -15,8 +15,8 @@ const HEARTBEAT_WINDOWS = [
 const BG_LOWER = 11;
 const BG_UPPER = 15;
 
-const BR_LOWER = 42;
-const BR_UPPER = 46;
+const BR_LOWER = 43;
+const BR_UPPER = 47;
 
 const GR_LOWER = 29;
 const GR_UPPER = 34;
