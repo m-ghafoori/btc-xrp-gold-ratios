@@ -19,7 +19,7 @@ const BR_LOWER = 43;
 const BR_UPPER = 47;
 
 const GR_LOWER = 30;
-const GR_UPPER = 36;
+const GR_UPPER = 34;
 
 // =============================
 // API FETCH FUNCTIONS
