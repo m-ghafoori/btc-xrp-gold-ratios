@@ -15,11 +15,11 @@ const HEARTBEAT_WINDOWS = [
 const BG_LOWER = 11;
 const BG_UPPER = 15;
 
-const BR_LOWER = 45;
-const BR_UPPER = 50;
+const BR_LOWER = 44;
+const BR_UPPER = 47;
 
-const GR_LOWER = 31;
-const GR_UPPER = 37;
+const GR_LOWER = 30;
+const GR_UPPER = 36;
 
 // =============================
 // API FETCH FUNCTIONS
