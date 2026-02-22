@@ -15,7 +15,7 @@ const BG_LOWER = 11;
 const BG_UPPER = 15;
 
 const BR_LOWER = 45;
-const BR_UPPER = 48;
+const BR_UPPER = 49;
 
 const GR_LOWER = 31;
 const GR_UPPER = 36;
