@@ -6,19 +6,19 @@ const axios = require("axios");
 
 // Heartbeat windows (24h format)
 const HEARTBEAT_WINDOWS = [
-  [5, 7],
-  [11, 13]
+  [5, 6],
+  [11, 12]
 ];
 
 // Boundaries
 const BG_LOWER = 11;
 const BG_UPPER = 15;
 
-const BR_LOWER = 45;
+const BR_LOWER = 46;
 const BR_UPPER = 49;
 
 const GR_LOWER = 31;
-const GR_UPPER = 36;
+const GR_UPPER = 38;
 
 // =============================
 // API FETCH FUNCTIONS
